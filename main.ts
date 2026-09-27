@@ -1,5 +1,73 @@
 // ============================================================
-// JMS 搬瓦工订阅转换 - Deno Deploy
+// JMS 搬瓦工多订阅转换 - Deno Deploy
+// 支持 5 个独立订阅
+//
+// 访问方式：
+// /sub/jms1?token=xxx
+// /sub/jms2?token=xxx
+// /sub/jms3?token=xxx
+// /sub/jms4?token=xxx
+// /sub/jms5?token=xxx
+//
+// 环境变量：
+// SUB_TOKEN
+//
+// JMS1_SUB_URL
+// JMS1_BW_API
+//
+// JMS2_SUB_URL
+// JMS2_BW_API
+//
+// JMS3_SUB_URL
+// JMS3_BW_API
+//
+// JMS4_SUB_URL
+// JMS4_BW_API
+//
+// JMS5_SUB_URL
+// JMS5_BW_API
+// ============================================================
+
+
+// ============================================================
+// 1. 多订阅配置
+// ============================================================
+
+const SUBSCRIPTIONS = {
+  jms1: {
+    name: "JMS 搬瓦工 1",
+    subUrlEnv: "JMS1_SUB_URL",
+    bwApiEnv: "JMS1_BW_API",
+  },
+
+  jms2: {
+    name: "JMS 搬瓦工 2",
+    subUrlEnv: "JMS2_SUB_URL",
+    bwApiEnv: "JMS2_BW_API",
+  },
+
+  jms3: {
+    name: "JMS 搬瓦工 3",
+    subUrlEnv: "JMS3_SUB_URL",
+    bwApiEnv: "JMS3_BW_API",
+  },
+
+  jms4: {
+    name: "JMS 搬瓦工 4",
+    subUrlEnv: "JMS4_SUB_URL",
+    bwApiEnv: "JMS4_BW_API",
+  },
+
+  jms5: {
+    name: "JMS 搬瓦工 5",
+    subUrlEnv: "JMS5_SUB_URL",
+    bwApiEnv: "JMS5_BW_API",
+  },
+} as const;
+
+
+// ============================================================
+// 2. 节点名称
 // ============================================================
 
 const NODE_NAMES: Record<string, string> = {
@@ -8,28 +76,34 @@ const NODE_NAMES: Record<string, string> = {
   s3: "🇺🇸 洛杉矶 03",
   s4: "🇯🇵 日本大阪",
   s5: "🇳🇱 荷兰",
-  s801: "🇺🇸 洛杉矶 04｜x0.01倍 省流量平时使用这个",
+
+  s801:
+    "🇺🇸 洛杉矶 04｜x0.01倍 省流量平时使用这个",
 };
 
 
 // ============================================================
-// Deno HTTP Server
+// 3. Deno HTTP Server
 // ============================================================
 
 Deno.serve(async (request: Request) => {
   try {
-    const url = new URL(request.url);
+
+    const url =
+      new URL(request.url);
 
 
     // ========================================================
-    // 0. 健康检查
+    // 健康检查
     // ========================================================
 
     if (url.pathname === "/health") {
+
       return new Response(
-        "OK - Deno direct access works",
+        "OK - JMS multi subscription service works",
         {
           status: 200,
+
           headers: {
             "Content-Type":
               "text/plain; charset=utf-8",
@@ -43,31 +117,23 @@ Deno.serve(async (request: Request) => {
 
 
     // ========================================================
-    // 1. 读取 Deno 环境变量
+    // 4. 验证 Token
     // ========================================================
-
-    const JMS_SUB_URL =
-      Deno.env.get("JMS_SUB_URL");
 
     const SUB_TOKEN =
       Deno.env.get("SUB_TOKEN");
 
-    const JMS_BW_API =
-      Deno.env.get("JMS_BW_API");
-
-
-    // ========================================================
-    // 2. 验证订阅 Token
-    // ========================================================
 
     if (
       !SUB_TOKEN ||
       url.searchParams.get("token") !== SUB_TOKEN
     ) {
+
       return new Response(
         "Forbidden",
         {
           status: 403,
+
           headers: {
             "Content-Type":
               "text/plain; charset=utf-8",
@@ -81,14 +147,63 @@ Deno.serve(async (request: Request) => {
 
 
     // ========================================================
-    // 3. 检查 JMS 官方订阅地址
+    // 5. 从 URL 获取订阅编号
+    //
+    // /sub/jms1
+    // /sub/jms2
+    // ...
+    // /sub/jms5
     // ========================================================
 
-    if (!JMS_SUB_URL) {
+    const match =
+      url.pathname.match(
+        /^\/sub\/(jms[1-5])\/?$/,
+      );
+
+
+    if (!match) {
+
       return new Response(
-        "JMS_SUB_URL is not configured.",
+        [
+          "JMS Multi Subscription Service",
+          "",
+          "Available paths:",
+          "/sub/jms1",
+          "/sub/jms2",
+          "/sub/jms3",
+          "/sub/jms4",
+          "/sub/jms5",
+        ].join("\n"),
         {
-          status: 500,
+          status: 404,
+
+          headers: {
+            "Content-Type":
+              "text/plain; charset=utf-8",
+
+            "Cache-Control":
+              "no-store",
+          },
+        },
+      );
+    }
+
+
+    const subId =
+      match[1] as keyof typeof SUBSCRIPTIONS;
+
+
+    const subConfig =
+      SUBSCRIPTIONS[subId];
+
+
+    if (!subConfig) {
+
+      return new Response(
+        "Unknown subscription",
+        {
+          status: 404,
+
           headers: {
             "Content-Type":
               "text/plain; charset=utf-8",
@@ -99,7 +214,42 @@ Deno.serve(async (request: Request) => {
 
 
     // ========================================================
-    // 4. 获取 JMS 官方订阅
+    // 6. 根据订阅编号读取对应环境变量
+    // ========================================================
+
+    const JMS_SUB_URL =
+      Deno.env.get(
+        subConfig.subUrlEnv,
+      );
+
+
+    const JMS_BW_API =
+      Deno.env.get(
+        subConfig.bwApiEnv,
+      );
+
+
+    if (!JMS_SUB_URL) {
+
+      return new Response(
+        `${subConfig.subUrlEnv} is not configured.`,
+        {
+          status: 500,
+
+          headers: {
+            "Content-Type":
+              "text/plain; charset=utf-8",
+
+            "Cache-Control":
+              "no-store",
+          },
+        },
+      );
+    }
+
+
+    // ========================================================
+    // 7. 获取对应 JMS 官方订阅
     // ========================================================
 
     const upstream =
@@ -121,13 +271,18 @@ Deno.serve(async (request: Request) => {
 
 
     if (!upstream.ok) {
+
       return new Response(
-        `Failed to fetch JMS subscription: ${upstream.status}`,
+        `Failed to fetch ${subConfig.name}: ${upstream.status}`,
         {
           status: 502,
+
           headers: {
             "Content-Type":
               "text/plain; charset=utf-8",
+
+            "Cache-Control":
+              "no-store",
           },
         },
       );
@@ -139,7 +294,7 @@ Deno.serve(async (request: Request) => {
 
 
     // ========================================================
-    // 5. 修改 Clash 配置
+    // 8. 修改 Clash 配置
     // ========================================================
 
     // 节点中文名称
@@ -147,33 +302,34 @@ Deno.serve(async (request: Request) => {
       renameJmsNodes(yaml);
 
 
-    // 重建代理组
-    // 删除官方 JMS Auto
-    // 添加自动故障切换
+    // 根据实际存在节点自动重建代理组
     yaml =
       rebuildProxyGroups(yaml);
 
 
-    // 国内直连 / 其他全部 JMS
+    // 国内直连 / 国外代理
     yaml =
       addRoutingRules(yaml);
 
 
     // ========================================================
-    // 6. 获取 JMS 实时流量
+    // 9. 获取对应账户实时流量
     // ========================================================
 
     let total:
       number | null = null;
 
+
     let used:
       number | null = null;
+
 
     let resetDay:
       number | null = null;
 
 
     if (JMS_BW_API) {
+
       try {
 
         const bwResponse =
@@ -235,7 +391,7 @@ Deno.serve(async (request: Request) => {
         } else {
 
           console.log(
-            "JMS bandwidth API HTTP error:",
+            `${subId} bandwidth API HTTP error:`,
             bwResponse.status,
           );
         }
@@ -243,7 +399,7 @@ Deno.serve(async (request: Request) => {
       } catch (error) {
 
         console.log(
-          "JMS bandwidth API error:",
+          `${subId} bandwidth API error:`,
           error,
         );
       }
@@ -251,7 +407,7 @@ Deno.serve(async (request: Request) => {
 
 
     // ========================================================
-    // 7. Clash Subscription-Userinfo
+    // 10. Clash Subscription-Userinfo
     // ========================================================
 
     let subscriptionInfo = "";
@@ -294,8 +450,8 @@ Deno.serve(async (request: Request) => {
 
     } else {
 
-      // 如果流量 API 失败
-      // 使用 JMS 官方 Header
+      // 流量 API 获取失败时
+      // 使用对应官方订阅返回的 Header
 
       subscriptionInfo =
         upstream.headers.get(
@@ -305,7 +461,7 @@ Deno.serve(async (request: Request) => {
 
 
     // ========================================================
-    // 8. 返回 Clash 配置
+    // 11. 返回 Clash 配置
     // ========================================================
 
     const headers =
@@ -318,14 +474,22 @@ Deno.serve(async (request: Request) => {
     );
 
 
-    // 订阅名称
+    // 每个订阅显示不同名称
+
+    const encodedFilename =
+      encodeURIComponent(
+        subConfig.name,
+      );
+
+
     headers.set(
       "Content-Disposition",
-      "inline; filename*=UTF-8''JMS%E6%90%AC%E7%93%A6%E5%B7%A5",
+      `inline; filename*=UTF-8''${encodedFilename}`,
     );
 
 
-    // 6 小时更新
+    // 6 小时自动更新
+
     headers.set(
       "Profile-Update-Interval",
       "6",
@@ -333,6 +497,7 @@ Deno.serve(async (request: Request) => {
 
 
     // 禁止缓存旧订阅
+
     headers.set(
       "Cache-Control",
       "no-store, no-cache, must-revalidate",
@@ -381,6 +546,7 @@ Deno.serve(async (request: Request) => {
       "Deno Error: " + message,
       {
         status: 500,
+
         headers: {
           "Content-Type":
             "text/plain; charset=utf-8",
@@ -395,12 +561,15 @@ Deno.serve(async (request: Request) => {
 
 
 // ============================================================
-// 节点自动重命名
+// 12. 节点自动重命名
 //
-// 支持：
+// 支持类似：
+//
 // c10s1
 // c10s2
 // c70s1
+// c70s801
+//
 // 等 JMS 动态前缀
 // ============================================================
 
@@ -437,14 +606,71 @@ function renameJmsNodes(
 
 
 // ============================================================
-// 重建 proxy-groups
+// 13. 找出当前订阅实际存在的节点
+//
+// 与旧版本不同：
+// 不再强制假设每个订阅都有全部节点。
+//
+// 如果某个账户没有日本/荷兰/某个 LA 节点，
+// 就不会把不存在的节点写入 proxy-groups。
+// ============================================================
+
+function getExistingNodes(
+  yaml: string,
+): string[] {
+
+  const orderedNodes = [
+    "🇺🇸 洛杉矶 04｜x0.01倍 省流量平时使用这个",
+    "🇺🇸 洛杉矶 01",
+    "🇺🇸 洛杉矶 02",
+    "🇺🇸 洛杉矶 03",
+    "🇯🇵 日本大阪",
+    "🇳🇱 荷兰",
+  ];
+
+
+  return orderedNodes.filter(
+    (nodeName) => {
+
+      const escaped =
+        escapeRegExp(nodeName);
+
+
+      // 只检查 proxies 区域里是否存在这个 name
+      // 支持：
+      // name: "xxx"
+      // name: 'xxx'
+      // name: xxx
+
+      const pattern =
+        new RegExp(
+          `name:\\s*["']?${escaped}["']?(?:\\s|,|$)`,
+          "m",
+        );
+
+
+      return pattern.test(yaml);
+    },
+  );
+}
+
+
+// ============================================================
+// 14. 重建 proxy-groups
 //
 // JMS 主组：
 // 默认第一项 = 自动故障切换
 //
-// 自动故障切换：
-// 优先使用 x0.01 洛杉矶04
-// 不可用时依次切换其他节点
+// fallback：
+// 优先顺序：
+// 1. x0.01 洛杉矶04
+// 2. 洛杉矶01
+// 3. 洛杉矶02
+// 4. 洛杉矶03
+// 5. 日本大阪
+// 6. 荷兰
+//
+// 但只添加当前订阅实际存在的节点。
 // ============================================================
 
 function rebuildProxyGroups(
@@ -463,12 +689,35 @@ function rebuildProxyGroups(
 
 
   if (proxyIndex === -1) {
+
     return yaml;
   }
 
 
-  // 找 proxy-groups 后面的
-  // 下一个顶级 YAML 区块
+  // ==========================================================
+  // 获取实际存在节点
+  // ==========================================================
+
+  const existingNodes =
+    getExistingNodes(yaml);
+
+
+  // 一个都没识别出来时
+  // 为防止生成坏配置，保持官方 proxy-groups 不动
+
+  if (existingNodes.length === 0) {
+
+    console.log(
+      "No known JMS nodes detected; keeping original proxy-groups.",
+    );
+
+    return yaml;
+  }
+
+
+  // ==========================================================
+  // 找 proxy-groups 后面的下一个顶级 YAML 区块
+  // ==========================================================
 
   let nextTopLevelIndex = -1;
 
@@ -495,6 +744,28 @@ function rebuildProxyGroups(
   }
 
 
+  // ==========================================================
+  // 生成节点列表
+  // ==========================================================
+
+  const manualProxyLines =
+    existingNodes.map(
+      (name) =>
+        `  - "${name}"`,
+    );
+
+
+  const fallbackProxyLines =
+    existingNodes.map(
+      (name) =>
+        `  - "${name}"`,
+    );
+
+
+  // ==========================================================
+  // 新 proxy-groups
+  // ==========================================================
+
   const newProxyGroups = [
 
     "proxy-groups:",
@@ -512,25 +783,17 @@ function rebuildProxyGroups(
     "  proxies:",
 
 
-    // 第一项
-    // 新导入时优先自动故障切换
+    // 默认自动故障切换
 
     '  - "🔄 自动故障切换"',
 
 
-    // 手动节点
+    // 当前订阅实际存在节点
 
-    '  - "🇺🇸 洛杉矶 04｜x0.01倍 省流量平时使用这个"',
+    ...manualProxyLines,
 
-    '  - "🇺🇸 洛杉矶 01"',
 
-    '  - "🇺🇸 洛杉矶 02"',
-
-    '  - "🇺🇸 洛杉矶 03"',
-
-    '  - "🇯🇵 日本大阪"',
-
-    '  - "🇳🇱 荷兰"',
+    // 允许手动直连
 
     "  - DIRECT",
 
@@ -548,23 +811,7 @@ function rebuildProxyGroups(
     "  proxies:",
 
 
-    // 第一优先
-    // x0.01 省流量节点
-
-    '  - "🇺🇸 洛杉矶 04｜x0.01倍 省流量平时使用这个"',
-
-
-    // 后备节点
-
-    '  - "🇺🇸 洛杉矶 01"',
-
-    '  - "🇺🇸 洛杉矶 02"',
-
-    '  - "🇺🇸 洛杉矶 03"',
-
-    '  - "🇯🇵 日本大阪"',
-
-    '  - "🇳🇱 荷兰"',
+    ...fallbackProxyLines,
 
 
     // 测试地址
@@ -580,11 +827,16 @@ function rebuildProxyGroups(
   ];
 
 
+  // ==========================================================
+  // proxy-groups 是最后一个区块
+  // ==========================================================
+
   if (
     nextTopLevelIndex === -1
   ) {
 
     return [
+
       ...lines.slice(
         0,
         proxyIndex,
@@ -595,6 +847,10 @@ function rebuildProxyGroups(
     ].join("\n");
   }
 
+
+  // ==========================================================
+  // proxy-groups 后面还有其他区块
+  // ==========================================================
 
   return [
 
@@ -614,18 +870,13 @@ function rebuildProxyGroups(
 
 
 // ============================================================
-// 国内直连 / 国外代理
+// 15. 国内直连 / 国外代理
 //
 // 局域网 / 私有地址 → DIRECT
 // 中国大陆          → DIRECT
 // 其他所有流量      → JMS
 //
-// JMS 默认：🔄 自动故障切换
-//
-// 因此：
-// 国内流量 → 不消耗 JMS
-// 国外流量 → JMS
-// 洛杉矶04不可用 → 自动切换其他节点
+// JMS 默认使用：🔄 自动故障切换
 // ============================================================
 
 function addRoutingRules(
@@ -785,7 +1036,7 @@ function addRoutingRules(
 
 
 // ============================================================
-// 下一次 JMS 流量重置日期
+// 16. 下一次 JMS 流量重置日期
 //
 // 使用 Los Angeles 时区
 // ============================================================
@@ -897,7 +1148,6 @@ function getNextResetTimestamp(
 
   // ==========================================================
   // 使用中午 UTC
-  // 减少 Clash 日期显示偏一天的问题
   // ==========================================================
 
   return Math.floor(
@@ -914,7 +1164,7 @@ function getNextResetTimestamp(
 
 
 // ============================================================
-// 正则转义
+// 17. 正则转义
 // ============================================================
 
 function escapeRegExp(
